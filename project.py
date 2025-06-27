@@ -2,7 +2,6 @@ from random import random, randint
 from math import log
 import winsound
 
-
 class Network():
     def __init__(self, ins, id):
 
@@ -72,10 +71,10 @@ def main():
     frequency = 300
     length = 800
 
-    species_size = 1_000
-    bits = 4
-    testing_size = 100
-    generations = 10000
+    species_size = 10_000
+    bits = 3
+    testing_size = 50
+    generations = 1000
 
     # create Network objects
     for i in range(species_size):
