@@ -1,7 +1,6 @@
 # assert self.networks[net_id].id == net_id
 import numpy as np
 from math import e
-import mypy
 import copy
 
 class Population():
@@ -44,11 +43,10 @@ class Population():
             elite_ids = sorted_ids[0:self.elite_size] # [:-self.elite_size:-1]
             elites = list(self.networks[net_id] for net_id in elite_ids)
 
-            anchor = self.elite_size
 
-            #print(fitnesses)
 
             current_elite_rank = 0
+            print("Elite size:", len(elites))
             for elite in elites:
                 child_min = self.elite_size + current_elite_rank * self.species_size  # (10 + 0 * 9) = 10, (10 + 1 * 9) = 19, (10 + 2 * 9) = 28
                 child_max = child_min + self.species_size # (10 + 9) = 19, (19 + 9) = 28, (28 + 9) = 37
@@ -58,15 +56,12 @@ class Population():
                 
                 for rank in range(child_min, child_max):
                     net_id = fitnesses[rank][1]
-                    self.networks[net_id] = (self.networks[net_id].inherit(elite))
+                    (self.networks[net_id].inherit(elite))
 
-                current_elite_rank +=1
+                current_elite_rank += 1
             print("\n----------\n")
 
             self.best_fitnesses.append(fitnesses[0][0])
-
-
-
 
 class Network():
     def __init__(self, bits_per_operand: int, signed: bool, layer_sizes: list, net_id: int):
@@ -116,16 +111,13 @@ class Network():
         #layer_output = np.array(layer_output)
         #layer.node_biases = np.array(layer.node_biases)
 
-
         layer_output = (np.array(layer_output)) + (np.array(layer.node_biases))
         layer_output = np.array(layer_output)
 
         if layer.type == "output":
-            return vectorised_rounded_sigmoid(layer_output)
-            #activation_function = final_activation_function
+            return vectorised_rounded_sigmoid(layer_output) #final_activation_function(layer_output)
 
-        return vectorised_sigmoid(layer_output)
-        #return activation_function(layer_output)
+        return vectorised_sigmoid(layer_output) #activation_function(layer_output)
 
     def test_fitness(self, test_data: list):
         
@@ -145,14 +137,13 @@ class Network():
             output_guess = current_inputs
 
             matches = output_guess == test_question[2]
-            if (output_guess == test_question[2]).all(): # OPTIMISATION AVAILABL !!!!!
+            if (output_guess == test_question[2]).all(): # OPTIMISATION AVAILABLE !!!!!
                 self.acc += 1
             self.bit_frequency += matches
             self.bit_percentage = self.bit_frequency / len(test_data)
 
         self.acc = self.acc / len(test_data)
         self.weighted_bit_frequency = (100 * self.bit_percentage/(2* num_of_output_bits))
-        
 
         self.fitness = np.sum(self.weighted_bit_frequency) + (50 * self.acc)
 
@@ -160,37 +151,40 @@ class Network():
 
     def inherit(self, other):
 
-        child_net = copy.deepcopy(self)
-        print("A", child_net.layers[1].node_weights)
-        
-        for layer_level, layer in enumerate(other.layers):
-            if layer.type == "input":
-                break
-            else:
-                num_of_nodes = layer.num_of_nodes
-                num_of_weights = len(layer.node_weights[0])
+        layer_amount = len(self.layers)
 
-                for n in range(num_of_nodes):
-                    for w in range(num_of_weights):
-                        layer.node_weights[n][w] = mutate(
-                                                    child_net.layers[layer_level].node_weights[n][w],
-                                                    1,
-                                                    10)
-                    layer.node_biases[n] = mutate(
-                                            child_net.layers[layer_level].node_biases[n],
-                                            1,
-                                            10)
+        for layer in range(layer_amount):
+            if layer != 0: #not input layer
+                current_layer = self.layers[layer]
+                previous_layer = self.layers[layer - 1]
 
-        print("B", child_net.layers[1].node_weights)
-        return child_net
+                node_amount = current_layer.num_of_nodes
+                input_amount = previous_layer.num_of_nodes
+
+                #print(f"\nStart{current_layer.node_weights}\n")
+                for n in range(node_amount):
+                    #print(f"\nStart{current_layer.node_weights}\n")
+                    for w in range(input_amount):
+                        current_layer.node_weights[n][w] = mutate(other.layers[layer].node_weights[n][w],
+                                                    0.95, 0.5)# Change to self.
+                        
+                        current_layer.node_biases[n] = mutate(other.layers[layer].node_biases[n],
+                                                            0.95, 0.5)
+
+                #print(f"\nEnd{current_layer.node_weights}\n")  
+                #self.layers[layer].node_weights = current_layer.node_weights
+                #self.layers[layer].node_biases = current_layer.node_biases
+
+
+
+
+
+
 
     def data(self, gen, output_layer_size, rank, id):
         msg = f"Gen: {gen} | Rank: {rank:03} | ID: {id:03} | Fitness: {round(self.fitness, 4): 04} | Accuracy: {round(100 * self.acc, 2):04}"
-        for i in range(output_layer_size ):
+        for i in range(output_layer_size):
             msg += f" | bit {i}: {round(100 * self.bit_percentage[0][i], 4):04}"
-
-        #if (rank == 0) or (rank == 1):
-        #    print(self.layers[2].node_biases)
 
         return msg
 
@@ -216,30 +210,25 @@ class Layer():
 
 def main():
     
-    bits_per_operand: int = 3
-    signed: bool = False
+    bits_per_operand: int = 8
+    signed: bool = True
 
     input_bit_size = 2 * bits_per_operand
     output_bit_size = bits_per_operand + 1
 
-    population_size: int = 10
+    population_size: int = 100
     elites_chance: float = 0.1
     mutation_chance: float = 0.1
     
     h1_size: int = 128
-    h2_size: int = 2
-    h3_size: int = 2
+    h2_size: int = 32
+    h3_size: int = 16
     h4_size: int = 16
 
     layer_sizes: list = [input_bit_size, h2_size, h3_size, output_bit_size]
-
     num_of_tests: int = 50
 
     test_data_a = generate_test_data(bits_per_operand, num_of_tests, signed)
-    #test_data_b = generate_test_data(bits_per_operand, num_of_tests, signed)
-    #test_data_c = generate_test_data(bits_per_operand, num_of_tests, signed)
-    #test_data_d = generate_test_data(bits_per_operand, num_of_tests, signed)
-    #test_data_e = generate_test_data(bits_per_operand, 10, signed)
 
     population_a = Population(bits_per_operand,
                               signed,
@@ -249,14 +238,12 @@ def main():
                               )
 
     print("Start")
-    population_a.evolve(generations = 4, test_data = test_data_a, print_results = True)
+    population_a.evolve(generations = 50, test_data = test_data_a, print_results = True)
 
 
    # print("Test")
    # print(test_data_b[0][0], test_data_b[0][1], test_data_b[0][2])
    # population_a.evolve(generations = 1, test_data = test_data_e, print_results = True)
-
-    #population_a.test_best()
 
 def generate_test_data(bits_per_operand: int, num_of_tests: int, signed: bool):
     
