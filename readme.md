@@ -1,6 +1,6 @@
 # This is a comment
 
-# This is another comment
+# git branch -d <branch_name>: deletes branch
 
 # git branch <branch_name>: changes branch
 

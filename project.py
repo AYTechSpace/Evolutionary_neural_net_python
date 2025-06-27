@@ -1,192 +1,335 @@
-from random import random, randint
-from math import log
-import winsound
+import numpy as np
+from math import e
+import mypy
+import copy
+
+class Population():
+    def __init__(self, bits_per_operand: int, signed: bool,
+                 population_size: int, layer_sizes: list, elites_chance: float):
+        
+        self.networks: list = []
+        self.population_size: int = population_size                         # Pop = 100
+
+        self.elite_size: int = int(elites_chance * population_size)         # Elite = 10
+        self.dregs_size: int = population_size - self.elite_size # Sorry!   # Dreg = 90
+        self.species_size: int = self.dregs_size // self.elite_size         # Species = 9
+        self.remainder_size: int =  self.dregs_size % self.species_size     # Remainder = 0
+
+        self.layer_sizes: list = layer_sizes
+        
+        for net_id in range(population_size):
+            current_network = Network(bits_per_operand, signed, layer_sizes, net_id)
+            self.networks.append(current_network)
+
+    def evolve(self, generations: int, test_data: list, print_results: bool = True):
+
+        for gen in range(generations):
+
+            fitnesses = [] 
+
+            for network in self.networks:
+                fitnesses.append(network.test_fitness(test_data)) # test_fitness should return a tuple (str, id)
+
+            fitnesses.sort(reverse = True)
+            sorted_ids = list(fitness_tuple[1] for fitness_tuple in fitnesses) 
+
+            elite_ids = sorted_ids[0:self.elite_size] # [:-self.elite_size:-1]
+            elites = list(self.networks[net_id] for net_id in elite_ids)
+
+            anchor = self.elite_size
+
+            #print(fitnesses)
+
+            current_elite_rank = 0
+            for elite in elites:
+                child_min = self.elite_size + current_elite_rank * self.species_size  # (10 + 0 * 9) = 10, (10 + 1 * 9) = 19, (10 + 2 * 9) = 28
+                child_max = child_min + self.species_size # (10 + 9) = 19, (19 + 9) = 28, (28 + 9) = 37
+
+                if print_results:
+                    print(elite.data(gen, elite.layer_sizes[-1], elites.index(elite), elite.id))
+                
+
+                if current_elite_rank != 0:
+                    
+                    for rank in range(child_min, child_max):
+                        net_id = fitnesses[rank][1]
+                        self.networks[net_id] = (self.networks[net_id].inherit(elite))
+
+                current_elite_rank +=1
+            print("\n----------\n")
+
+
+#            for elite in elites:
+#                if print_results:
+#                    print(elite.data(gen, elite.layer_sizes[-1], elites.index(elite))) # method should return information about the network
+#                for rank in range(anchor, anchor + self.species_size + 1):
+#                    net_id = fitnesses[rank][1]
+#                    if elite.id != net_id:
+#                        self.networks[net_id] = self.networks[net_id].inherit(elite) # This method should make the network become a copy of the elite with a chance of each weight/ bias changing # Might not need the self, juts the other
+                
+#                anchor = anchor + self.species_size     
+
+    #def test_best(self, bits_per_operand, signed):
+    #    self.evolve(1, generate_test_data(bits_per_operand, 1, signed), True)
 
 class Network():
-    def __init__(self, ins, id):
+    def __init__(self, bits_per_operand: int, signed: bool, layer_sizes: list, net_id: int):
+        self.bits_per_operand: int = bits_per_operand
+        self.signed: bool = signed
+        self.layer_sizes: list = layer_sizes
+        self.id: int = net_id
 
-        self.ins: int = ins
-        self.weights: dict = {"id" : id,
-                              "accuracy" : 0,
-                              "fitness" : None,
-                              "relative fitness" : None,
-                              "bias" : random() - random()}
-        self.node: float = 0.0
+        # Performance Stats
+        self.bit_frequency: float = 0
+        self.weighted_bit_frequency: float = 0
+        self.acc: float = 0
+        self.rank: int
 
-        self.max = 2 ** (1 + self.ins) - 1
-        for i in range(self.ins*2):
-            self.weights[i] = (random())
-        
-    def calculate(self, bin_a: list, bin_b: list):
+        self.fitness: float = 0.0
 
-        self.node = 0
+        self.layers: list = self.create_layers(self.layer_sizes)
 
-        size = len(bin_a) * 2
-        super_list = bin_a + bin_b
-        for i in range(size):
-            #print(f"{i}) Node: {self.node}, bit: {super_list[i]}, weight: {self.weights[i]}")
-            self.node += super_list[i] * self.weights[i]
-        #print(32 * self.node/size)
+    def create_layers(self, layer_sizes):
 
-        sum = self.node + self.weights["bias"]
-        avg = sum/size
-        guess = round(self.max * avg)
-        return guess
+        num_of_layers = len(layer_sizes)
+        layers = []
+
+
+        for layer_level in range(num_of_layers):
+            num_of_nodes = layer_sizes[layer_level]
+            if layer_level != 0:
+                num_of_inputs = layer_sizes[layer_level - 1]
+            else:
+                num_of_inputs = 0
+                
+            layers.append(Layer(num_of_nodes, layer_level, num_of_layers, num_of_inputs))
+            # if layer_level = 0, is input layer, no weights
+            # if layer_level = num_of_layers, is output_layer, special function
+
+        return layers
     
-    def check_fitness(self, size, bin_a, bin_b, ans, this_type):
-        total = 0
-        perfects = 0
-        for i in range(size):
-            fitness = (ans[i] - self.calculate(bin_a[i], bin_b[i]))
-            if fitness == 0:
-                perfects += 1
-            total += abs(fitness)
+    def find_layer_output(self, layer, layer_input, activation_function, final_activation_function):
 
-        fit_score= total/size
+        layer_output = []
 
-        self.weights["accuracy"] = f"{100 * perfects/size}%"
-        self.weights["fitness"] = fit_score
-        self.weights["relative fitness"] = f"{round(200 * fit_score/self.max, 2)}%"
-
-        if this_type:
-            return fit_score
-        return 100 * perfects/size
-    
-    def inherit_genes(self, other, mutation_factor):
-        self.weights["bias"] = other.weights["bias"] * (random() - random())
-        for i in range(self.ins):
-            mutation_factor = 1 + 4*random()*random() - 4*random()*random()
-            self.weights[i] = other.weights[i] * mutation_factor
+        for weights in layer.node_weights:
+            dot_product = np.dot(layer_input, np.array(weights[0]))
+            layer_output.append((dot_product))
         
+        # OPTIMISATION POTENTIAL !!!!!!!
+        #layer_output = np.array(layer_output)
+        #layer.node_biases = np.array(layer.node_biases)
+
+
+        layer_output = (np.array(layer_output)[0]) + (np.array(layer.node_biases))
+        layer_output = np.array(layer_output)
+
+        if layer.type == "output":
+            return vectorised_rounded_sigmoid(layer_output)
+            #activation_function = final_activation_function
+
+        return vectorised_sigmoid(layer_output)
+        #return activation_function(layer_output)
+
+    def test_fitness(self, test_data: list):
+        
+        self.fitness = 0
+        num_of_output_bits = self.layer_sizes[-1]
+        self.weighted_bit_frequency = np.zeros((1, num_of_output_bits))
+        bit_frequencies = np.zeros((1, num_of_output_bits)) # Number of output bits
+        self.bit_frequency = np.zeros((1, num_of_output_bits))
+        self.acc = 0
+
+        for test_question in test_data:
+            current_inputs = np.concatenate((test_question[0], test_question[1]))
+            for layer in self.layers:
+                
+                if layer.type != "input":
+                    current_inputs = self.find_layer_output(layer, current_inputs, vectorised_sigmoid, vectorised_rounded_sigmoid)
+
+            output_guess = current_inputs
+
+            matches = output_guess == test_question[2]
+            if (output_guess == test_question[2]).all(): # OPTIMISATION AVAILABL !!!!!
+                self.acc += 1
+            self.bit_frequency += bit_frequencies + matches
+            self.bit_percentage = self.bit_frequency / len(test_data)
+
+        self.acc = self.acc / len(test_data)
+        self.weighted_bit_frequency = (100 * self.bit_percentage/(2* num_of_output_bits))
+        
+
+        self.fitness = np.sum(self.weighted_bit_frequency) + (50 * self.acc)
+
+        return (round(float(self.fitness), 3), self.id)
+
+    def inherit(self, other):
+
+        child_net = copy.deepcopy(self)
+        
+        layer_level = 0
+        for layer_level, layer in enumerate(child_net.layers):
+            if layer.type == "input":
+                break
+            num_of_nodes = layer.num_of_nodes
+            num_of_weights = len(layer.node_weights[0])
+
+            for n in range(num_of_nodes):
+                for w in range(num_of_weights):
+                    if np.random.rand() < 1:
+                        layer.node_weights[n][w] = mutate(
+                                                    other.layers[layer_level].node_weights[n][w],
+                                                    0.15,
+                                                    0.2)
+                
+                if np.random.rand() < 1:
+                    layer.node_biases[n] = mutate(
+                                            other.layers[layer_level].node_biases[n],
+                                            0.15,
+                                            0.2)
+
+        return child_net
+
+    def data(self, gen, output_layer_size, rank, id):
+        msg = f"Gen: {gen} | Rank: {rank:03} | ID: {id:03} | Fitness: {round(self.fitness, 4)} | Accuracy: {round(100 * self.acc, 2):04}"
+        for i in range(output_layer_size ):
+            msg += f" | bit {i}: {round(100 * self.bit_percentage[0][i], 4):04}"
+
+        #if (rank == 0) or (rank == 1):
+        #    print(self.layers[2].node_biases)
+
+        return msg
+
+class Layer():
+    def __init__(self, num_of_nodes, layer_level, num_of_layers, num_of_inputs):
+
+        if layer_level == 0:
+            self.type = "input"
+        elif layer_level == num_of_layers - 1:
+            self.type = "output"
+        else:
+            self.type = "hidden"
+
+        self.num_of_nodes = num_of_nodes
+
+        self.node_weights = []
+        self.node_biases = []
+
+        if self.type != "input":
+            for i in range(num_of_nodes):
+                self.node_weights.append(np.random.uniform(-1, 1, (num_of_layers, num_of_inputs)))
+                self.node_biases.append(np.random.uniform(-1, 1))
 
 def main():
+    
+    bits_per_operand: int = 4
+    signed: bool = False
+
+    input_bit_size = 2 * bits_per_operand
+    output_bit_size = bits_per_operand + 1
+
+    population_size: int = 100
+    elites_chance: float = 0.1
+    mutation_chance: float = 0.1
+    
+    h1_size: int = 128
+    h2_size: int = 64
+    h3_size: int = 32
+    h4_size: int = 16
+
+    layer_sizes: list = [input_bit_size, h2_size, h3_size, output_bit_size]
+
+    num_of_tests: int = 100
+
+    test_data_a = generate_test_data(bits_per_operand, num_of_tests, signed)
+    test_data_b = generate_test_data(bits_per_operand, num_of_tests, signed)
+    test_data_c = generate_test_data(bits_per_operand, num_of_tests, signed)
+    test_data_d = generate_test_data(bits_per_operand, num_of_tests, signed)
+    test_data_e = generate_test_data(bits_per_operand, 10, signed)
+
+    population_a = Population(bits_per_operand,
+                              signed,
+                              population_size,
+                              layer_sizes,
+                              elites_chance,
+                              )
 
     print("Start")
+    population_a.evolve(generations = 50, test_data = test_data_a, print_results = True)
+    population_a.evolve(generations = 50, test_data = test_data_b, print_results = True)
+    population_a.evolve(generations = 50, test_data = test_data_c, print_results = True)
+    population_a.evolve(generations = 50, test_data = test_data_d, print_results = True)
+    print(population_a.networks[0].layers[0].node_weights)
+    print(population_a.networks[1].layers[1])
 
-    best: int
+    print("Test")
+    print(test_data_b[0][0], test_data_b[0][1], test_data_b[0][2])
+    population_a.evolve(generations = 1, test_data = test_data_e, print_results = True)
 
-    calcs = []
-    fits = []
+    #population_a.test_best()
 
-    frequency = 300
-    length = 800
+def generate_test_data(bits_per_operand: int, num_of_tests: int, signed: bool):
+    
+    test_data = []
+    
+    output_bits = bits_per_operand + 1 
 
-    species_size = 10_000
-    bits = 3
-    testing_size = 50
-    generations = 1000
+    max = 2 ** (bits_per_operand - signed) - 1
+    min = signed * (-max)
 
-    # create Network objects
-    for i in range(species_size):
-        current_calc = Network(bits, i)
-        calcs.append(current_calc)
+    for _ in range(num_of_tests):
+        operand_a = np.random.randint(-min, max + 1)
+        operand_b = np.random.randint(-min, max + 1)
+        result = operand_a + operand_b
 
-    operand_a, operand_b, correct_answers = generate_training_data(bits, testing_size)
+        test_data.append([bin_format(operand_a, bits_per_operand, signed),
+                          bin_format(operand_b, bits_per_operand, signed),
+                          bin_format(result, output_bits, signed)])
 
-    for gen in range(generations):
-        # check fitnesses
-        fits.clear()
-        
-#        for i in range(species_size):
-#            current_fits = calcs[i].check_fitness(testing_size, operand_a, operand_b, correct_answers)
-#
-#            fits.append(current_fits)
+    return test_data
 
-        for i in range(species_size):
-            current_accuracy = calcs[i].check_fitness(testing_size, operand_a, operand_b, correct_answers, False)
+def bin_format(integer: int, bits, signed: bool):
 
-            fits.append(current_accuracy)
+    binary = bin(integer).replace("0b", "")
 
-
-
-        best_id = find_best_accuracy(fits)
-        #print(gen, gen, gen, best_id, len(calcs))
-
-        #print(calcs[best_id].calculate([0,0,1,1],[1,0,0,0]), fits[best_id])
-        #print(fits[best_id])
-        #print(gen, gen, gen, best_id, len(calcs))
-        print(gen,
-              "id:", calcs[best_id].weights["id"],
-              "acc:", calcs[best_id].weights["accuracy"],
-              "fit:", calcs[best_id].weights["fitness"],
-              "rel_fit:", calcs[best_id].weights["relative fitness"])
-
-        for i in range(species_size):
-            if i != best_id:
-                mutation_rate = 1 + 1*random() - 0.1*random()
-                calcs[i].inherit_genes(calcs[best_id], mutation_rate)
-                
-    print(calcs[best_id].weights)
-
-    for _ in range(2):
-        winsound.Beep(frequency, length)
-
-
-def generate_training_data(bits, data_size):
-
-    max = 2 ** bits - 1
-
-    operand_a = []
-    operand_b = []
-    correct_answers = []
-
-    for _ in range(data_size):
-        a = randint(1, max)
-        b = randint(1, max)
-
-        operand_a.append(den_to_bin(a, bits))
-        operand_b.append(den_to_bin(b, bits))
-
-        correct_answers.append(a + b)
-
-    return operand_a, operand_b, correct_answers
-
-def den_to_bin(denery, bits):
-    bin = []
-    values = []
-
-    if denery > 2 ** bits:
-        raise ValueError("Invalid bit size")
-
-    for i in range(bits):
-        values.insert(0, 2 ** i)
-
-    for val in values:
-        if val <= denery:
-            denery -= val
-            bin.append(1)
+    if signed:
+        if binary[0] == "-":
+            binary = binary.replace("-", "1")
         else:
-            bin.append(0)
+            binary = "0" + binary
 
-    return bin
 
-def find_best_fitness(fits):
-    lowest_fitness = 1000
-    best_id = 0
-    current_id = 0
+    
+    missing_0s = bits - len(binary)
+    binary = signed*binary[0]  + ("0" * missing_0s) + (not signed)*(binary[0]) + binary[1:]
 
-    for fitness in fits:
-        if fitness < lowest_fitness:
-            lowest_fitness = fitness
-            best_id = current_id
+    bin_form  = np.array(list(int(digit) for digit in binary))
 
-        current_id +=1
+    return bin_form
 
-    return best_id
+def sigmoid(x):
+    return 1/ (1 + (e ** -x))
 
-def find_best_accuracy(accuracies):
-    highest_accuracy = 0
-    best_id = 0
-    current_id = 0
+def vectorised_sigmoid(x):
+    return np.vectorize(sigmoid)(x)
 
-    for accuracy in accuracies:
-        if accuracy > highest_accuracy:
-            highest_accuracy = accuracy
-            best_id = current_id
+def rounded_sigmoid(x):
+    return round((1/ (1 + (e ** -x))))
 
-        current_id +=1
+def vectorised_rounded_sigmoid(x):
+    return np.vectorize(rounded_sigmoid)(x)
 
-    return best_id
+def mutate(x, chance, strength):
+    if np.random.uniform(0, 1) <= chance:
+        delta = np.random.uniform(-strength, strength)
+    else:
+        delta = 0
 
+    return x * (1 + delta)
+    
 if __name__ == "__main__":
+    #print(bin_format(7, 4, False))
     main()
+
+
+
