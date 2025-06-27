@@ -1,3 +1,4 @@
+# assert self.networks[net_id].id == net_id
 import numpy as np
 from math import e
 import mypy
@@ -16,6 +17,7 @@ class Population():
         self.remainder_size: int =  self.dregs_size % self.species_size     # Remainder = 0
 
         self.layer_sizes: list = layer_sizes
+        self.best_fitnesses: list = []
         
         for net_id in range(population_size):
             current_network = Network(bits_per_operand, signed, layer_sizes, net_id)
@@ -24,6 +26,12 @@ class Population():
     def evolve(self, generations: int, test_data: list, print_results: bool = True):
 
         for gen in range(generations):
+
+            unique_weights = set()
+            for net in self.networks:
+                unique_weights.add(str(net.layers[1].node_weights))
+            print(f"Unique genomes: {len(unique_weights)}")
+
 
             fitnesses = [] 
 
@@ -48,29 +56,17 @@ class Population():
                 if print_results:
                     print(elite.data(gen, elite.layer_sizes[-1], elites.index(elite), elite.id))
                 
-
-                if current_elite_rank != 0:
-                    
-                    for rank in range(child_min, child_max):
-                        net_id = fitnesses[rank][1]
-                        self.networks[net_id] = (self.networks[net_id].inherit(elite))
+                for rank in range(child_min, child_max):
+                    net_id = fitnesses[rank][1]
+                    self.networks[net_id] = (self.networks[net_id].inherit(elite))
 
                 current_elite_rank +=1
             print("\n----------\n")
 
+            self.best_fitnesses.append(fitnesses[0][0])
 
-#            for elite in elites:
-#                if print_results:
-#                    print(elite.data(gen, elite.layer_sizes[-1], elites.index(elite))) # method should return information about the network
-#                for rank in range(anchor, anchor + self.species_size + 1):
-#                    net_id = fitnesses[rank][1]
-#                    if elite.id != net_id:
-#                        self.networks[net_id] = self.networks[net_id].inherit(elite) # This method should make the network become a copy of the elite with a chance of each weight/ bias changing # Might not need the self, juts the other
-                
-#                anchor = anchor + self.species_size     
 
-    #def test_best(self, bits_per_operand, signed):
-    #    self.evolve(1, generate_test_data(bits_per_operand, 1, signed), True)
+
 
 class Network():
     def __init__(self, bits_per_operand: int, signed: bool, layer_sizes: list, net_id: int):
@@ -80,8 +76,8 @@ class Network():
         self.id: int = net_id
 
         # Performance Stats
-        self.bit_frequency: float = 0
-        self.weighted_bit_frequency: float = 0
+        self.bit_frequency: np.ndarray
+        self.weighted_bit_frequency: np.ndarray
         self.acc: float = 0
         self.rank: int
 
@@ -113,7 +109,7 @@ class Network():
         layer_output = []
 
         for weights in layer.node_weights:
-            dot_product = np.dot(layer_input, np.array(weights[0]))
+            dot_product = np.dot(layer_input, np.array(weights))
             layer_output.append((dot_product))
         
         # OPTIMISATION POTENTIAL !!!!!!!
@@ -121,7 +117,7 @@ class Network():
         #layer.node_biases = np.array(layer.node_biases)
 
 
-        layer_output = (np.array(layer_output)[0]) + (np.array(layer.node_biases))
+        layer_output = (np.array(layer_output)) + (np.array(layer.node_biases))
         layer_output = np.array(layer_output)
 
         if layer.type == "output":
@@ -136,7 +132,6 @@ class Network():
         self.fitness = 0
         num_of_output_bits = self.layer_sizes[-1]
         self.weighted_bit_frequency = np.zeros((1, num_of_output_bits))
-        bit_frequencies = np.zeros((1, num_of_output_bits)) # Number of output bits
         self.bit_frequency = np.zeros((1, num_of_output_bits))
         self.acc = 0
 
@@ -152,7 +147,7 @@ class Network():
             matches = output_guess == test_question[2]
             if (output_guess == test_question[2]).all(): # OPTIMISATION AVAILABL !!!!!
                 self.acc += 1
-            self.bit_frequency += bit_frequencies + matches
+            self.bit_frequency += matches
             self.bit_percentage = self.bit_frequency / len(test_data)
 
         self.acc = self.acc / len(test_data)
@@ -166,32 +161,31 @@ class Network():
     def inherit(self, other):
 
         child_net = copy.deepcopy(self)
+        print("A", child_net.layers[1].node_weights)
         
-        layer_level = 0
-        for layer_level, layer in enumerate(child_net.layers):
+        for layer_level, layer in enumerate(other.layers):
             if layer.type == "input":
                 break
-            num_of_nodes = layer.num_of_nodes
-            num_of_weights = len(layer.node_weights[0])
+            else:
+                num_of_nodes = layer.num_of_nodes
+                num_of_weights = len(layer.node_weights[0])
 
-            for n in range(num_of_nodes):
-                for w in range(num_of_weights):
-                    if np.random.rand() < 1:
+                for n in range(num_of_nodes):
+                    for w in range(num_of_weights):
                         layer.node_weights[n][w] = mutate(
-                                                    other.layers[layer_level].node_weights[n][w],
-                                                    0.15,
-                                                    0.2)
-                
-                if np.random.rand() < 1:
+                                                    child_net.layers[layer_level].node_weights[n][w],
+                                                    1,
+                                                    10)
                     layer.node_biases[n] = mutate(
-                                            other.layers[layer_level].node_biases[n],
-                                            0.15,
-                                            0.2)
+                                            child_net.layers[layer_level].node_biases[n],
+                                            1,
+                                            10)
 
+        print("B", child_net.layers[1].node_weights)
         return child_net
 
     def data(self, gen, output_layer_size, rank, id):
-        msg = f"Gen: {gen} | Rank: {rank:03} | ID: {id:03} | Fitness: {round(self.fitness, 4)} | Accuracy: {round(100 * self.acc, 2):04}"
+        msg = f"Gen: {gen} | Rank: {rank:03} | ID: {id:03} | Fitness: {round(self.fitness, 4): 04} | Accuracy: {round(100 * self.acc, 2):04}"
         for i in range(output_layer_size ):
             msg += f" | bit {i}: {round(100 * self.bit_percentage[0][i], 4):04}"
 
@@ -217,35 +211,35 @@ class Layer():
 
         if self.type != "input":
             for i in range(num_of_nodes):
-                self.node_weights.append(np.random.uniform(-1, 1, (num_of_layers, num_of_inputs)))
+                self.node_weights.append(np.random.uniform(-1, 1, num_of_inputs))
                 self.node_biases.append(np.random.uniform(-1, 1))
 
 def main():
     
-    bits_per_operand: int = 4
+    bits_per_operand: int = 3
     signed: bool = False
 
     input_bit_size = 2 * bits_per_operand
     output_bit_size = bits_per_operand + 1
 
-    population_size: int = 100
+    population_size: int = 10
     elites_chance: float = 0.1
     mutation_chance: float = 0.1
     
     h1_size: int = 128
-    h2_size: int = 64
-    h3_size: int = 32
+    h2_size: int = 2
+    h3_size: int = 2
     h4_size: int = 16
 
     layer_sizes: list = [input_bit_size, h2_size, h3_size, output_bit_size]
 
-    num_of_tests: int = 100
+    num_of_tests: int = 50
 
     test_data_a = generate_test_data(bits_per_operand, num_of_tests, signed)
-    test_data_b = generate_test_data(bits_per_operand, num_of_tests, signed)
-    test_data_c = generate_test_data(bits_per_operand, num_of_tests, signed)
-    test_data_d = generate_test_data(bits_per_operand, num_of_tests, signed)
-    test_data_e = generate_test_data(bits_per_operand, 10, signed)
+    #test_data_b = generate_test_data(bits_per_operand, num_of_tests, signed)
+    #test_data_c = generate_test_data(bits_per_operand, num_of_tests, signed)
+    #test_data_d = generate_test_data(bits_per_operand, num_of_tests, signed)
+    #test_data_e = generate_test_data(bits_per_operand, 10, signed)
 
     population_a = Population(bits_per_operand,
                               signed,
@@ -255,16 +249,12 @@ def main():
                               )
 
     print("Start")
-    population_a.evolve(generations = 50, test_data = test_data_a, print_results = True)
-    population_a.evolve(generations = 50, test_data = test_data_b, print_results = True)
-    population_a.evolve(generations = 50, test_data = test_data_c, print_results = True)
-    population_a.evolve(generations = 50, test_data = test_data_d, print_results = True)
-    print(population_a.networks[0].layers[0].node_weights)
-    print(population_a.networks[1].layers[1])
+    population_a.evolve(generations = 4, test_data = test_data_a, print_results = True)
 
-    print("Test")
-    print(test_data_b[0][0], test_data_b[0][1], test_data_b[0][2])
-    population_a.evolve(generations = 1, test_data = test_data_e, print_results = True)
+
+   # print("Test")
+   # print(test_data_b[0][0], test_data_b[0][1], test_data_b[0][2])
+   # population_a.evolve(generations = 1, test_data = test_data_e, print_results = True)
 
     #population_a.test_best()
 
@@ -278,8 +268,8 @@ def generate_test_data(bits_per_operand: int, num_of_tests: int, signed: bool):
     min = signed * (-max)
 
     for _ in range(num_of_tests):
-        operand_a = np.random.randint(-min, max + 1)
-        operand_b = np.random.randint(-min, max + 1)
+        operand_a = np.random.randint(min, max + 1)
+        operand_b = np.random.randint(min, max + 1)
         result = operand_a + operand_b
 
         test_data.append([bin_format(operand_a, bits_per_operand, signed),
@@ -325,10 +315,9 @@ def mutate(x, chance, strength):
     else:
         delta = 0
 
-    return x * (1 + delta)
+    return (x * (1 + delta))
     
 if __name__ == "__main__":
-    #print(bin_format(7, 4, False))
     main()
 
 
