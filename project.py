@@ -1,7 +1,7 @@
 # assert self.networks[net_id].id == net_id
 import numpy as np
 from math import e
-import copy
+import matplotlib.pyplot as plt
 
 class Population():
     def __init__(self, bits_per_operand: int, signed: bool,
@@ -24,6 +24,9 @@ class Population():
 
     def evolve(self, generations: int, test_data: list, print_results: bool = True):
 
+        #gen_start = 0
+        #gen_delta = int(generations/self.population_size)
+
         for gen in range(generations):
 
             unique_weights = set()
@@ -32,17 +35,26 @@ class Population():
             print(f"Unique genomes: {len(unique_weights)}")
 
 
-            fitnesses = [] 
+            fitness_data = []
+            fitnesses = []
+            gens = []
 
             for network in self.networks:
-                fitnesses.append(network.test_fitness(test_data)) # test_fitness should return a tuple (str, id)
+                fitness_result = (network.test_fitness(test_data)) # test_fitness should return a tuple (str, id)
+                fitness_data.append(fitness_result)
+                fitnesses.append(fitness_result[0])
+                gens.append(gen)
 
-            fitnesses.sort(reverse = True)
-            sorted_ids = list(fitness_tuple[1] for fitness_tuple in fitnesses) 
+
+            plt.scatter(gens[:], fitnesses[:])
+#            plt.scatter(gens[:self.elite_size], fitnesses[:self.elite_size])
+            #gen_start += gen_delta
+
+            fitness_data.sort(reverse = True)
+            sorted_ids = list(fitness_tuple[1] for fitness_tuple in fitness_data) 
 
             elite_ids = sorted_ids[0:self.elite_size] # [:-self.elite_size:-1]
             elites = list(self.networks[net_id] for net_id in elite_ids)
-
 
 
             current_elite_rank = 0
@@ -55,13 +67,13 @@ class Population():
                     print(elite.data(gen, elite.layer_sizes[-1], elites.index(elite), elite.id))
                 
                 for rank in range(child_min, child_max):
-                    net_id = fitnesses[rank][1]
+                    net_id = fitness_data[rank][1]
                     (self.networks[net_id].inherit(elite))
 
                 current_elite_rank += 1
-            print("\n----------\n")
+            print("\n----------\n" * print_results)
 
-            self.best_fitnesses.append(fitnesses[0][0])
+            self.best_fitnesses.append(fitness_data[0][0])
 
 class Network():
     def __init__(self, bits_per_operand: int, signed: bool, layer_sizes: list, net_id: int):
@@ -166,20 +178,14 @@ class Network():
                     #print(f"\nStart{current_layer.node_weights}\n")
                     for w in range(input_amount):
                         current_layer.node_weights[n][w] = mutate(other.layers[layer].node_weights[n][w],
-                                                    0.95, 0.5)# Change to self.
+                                                    0.95, 1)# Change to self.
                         
                         current_layer.node_biases[n] = mutate(other.layers[layer].node_biases[n],
-                                                            0.95, 0.5)
+                                                            0.95, 1)
 
                 #print(f"\nEnd{current_layer.node_weights}\n")  
                 #self.layers[layer].node_weights = current_layer.node_weights
                 #self.layers[layer].node_biases = current_layer.node_biases
-
-
-
-
-
-
 
     def data(self, gen, output_layer_size, rank, id):
         msg = f"Gen: {gen} | Rank: {rank:03} | ID: {id:03} | Fitness: {round(self.fitness, 4): 04} | Accuracy: {round(100 * self.acc, 2):04}"
@@ -210,23 +216,24 @@ class Layer():
 
 def main():
     
-    bits_per_operand: int = 8
+    bits_per_operand: int = 2
     signed: bool = True
 
     input_bit_size = 2 * bits_per_operand
     output_bit_size = bits_per_operand + 1
 
-    population_size: int = 100
-    elites_chance: float = 0.1
+    generations = 10
+    population_size: int = 5
+    elites_chance: float = 0.2
     mutation_chance: float = 0.1
     
     h1_size: int = 128
-    h2_size: int = 32
-    h3_size: int = 16
+    h2_size: int = 64
+    h3_size: int = 32
     h4_size: int = 16
 
     layer_sizes: list = [input_bit_size, h2_size, h3_size, output_bit_size]
-    num_of_tests: int = 50
+    num_of_tests: int = 80
 
     test_data_a = generate_test_data(bits_per_operand, num_of_tests, signed)
 
@@ -238,7 +245,12 @@ def main():
                               )
 
     print("Start")
-    population_a.evolve(generations = 50, test_data = test_data_a, print_results = True)
+    population_a.evolve(generations = generations, test_data = test_data_a, print_results = True)
+
+
+    plt.xlabel("Generations")
+    plt.ylabel("Performance out of 100")
+    plt.show()
 
 
    # print("Test")
@@ -285,13 +297,20 @@ def bin_format(integer: int, bits, signed: bool):
     return bin_form
 
 def sigmoid(x):
+    limit = 60 # limiting the size of x ensures there's no OverFlowError, as well as needlessly large numbers being used as sigmoid rounds to 1 at 10 dp with a limit of 25
+    x = max((min(x, limit)),(-limit))
     return 1/ (1 + (e ** -x))
 
 def vectorised_sigmoid(x):
     return np.vectorize(sigmoid)(x)
 
 def rounded_sigmoid(x):
-    return round((1/ (1 + (e ** -x))))
+    if x > 0:
+        return 1
+    else:
+        return 0
+    #x = max((min(x, limit)),(-limit))
+    #return round((1/ (1 + (e ** -x))))
 
 def vectorised_rounded_sigmoid(x):
     return np.vectorize(rounded_sigmoid)(x)
