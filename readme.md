@@ -1,5 +1,7 @@
 v2.3.0
 
+Working
+
 Initially as part of CS50p I produced a program where a neural network is trained add two binary numbers. Starting from a single perceptron node, to generating a population of networks with a variable number of hidden layers.
 
 As of right now, and as of how this projet will be handed in, it will work by reproducing copies of the best performing networks with slights mutations
