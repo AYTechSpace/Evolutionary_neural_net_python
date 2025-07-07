@@ -2,6 +2,9 @@
 import numpy as np
 from math import e
 import matplotlib.pyplot as plt
+import tkinter as tk
+import ttkbootstrap as ttk
+
 
 class Population():
     def __init__(self, bits_per_operand: int, signed: bool,
@@ -13,7 +16,7 @@ class Population():
         self.elite_size: int = int(elites_chance * population_size)         # Elite = 10
         self.dregs_size: int = population_size - self.elite_size # Sorry!   # Dreg = 90
         self.species_size: int = self.dregs_size // self.elite_size         # Species = 9
-        self.remainder_size: int =  self.dregs_size % self.species_size     # Remainder = 0
+        #self.remainder_size: int =  self.dregs_size % self.species_size     # Remainder = 0 Redundant line as of now
 
         self.layer_sizes: list = layer_sizes
         self.best_fitnesses: list = []
@@ -22,12 +25,12 @@ class Population():
             current_network = Network(bits_per_operand, signed, layer_sizes, net_id)
             self.networks.append(current_network)
 
-    def evolve(self, generations: int, test_data: list, print_results: bool = True):
+    def evolve(self, _generations: int, test_data: list, print_results: bool = True):
 
         #gen_start = 0
         #gen_delta = int(generations/self.population_size)
 
-        for gen in range(generations):
+        for gen in range(_generations):
 
             unique_weights = set()
             for net in self.networks:
@@ -159,7 +162,7 @@ class Network():
 
         self.fitness = np.sum(self.weighted_bit_frequency) + (50 * self.acc)
 
-        return (round(float(self.fitness), 3), self.id)
+        return (float(self.fitness), self.id)
 
     def inherit(self, other):
 
@@ -215,47 +218,113 @@ class Layer():
                 self.node_biases.append(np.random.uniform(-1, 1))
 
 def main():
+
+    # Create Main Window and Title
+    window = ttk.Window(themename = "darkly")
+    window.title("AI Binary Sumator")
+    window.geometry("1200x800")
+
+    bits_per_operand = tk.IntVar()
+    signed: bool = tk.BooleanVar()
+
+    generations: int = tk.IntVar()
+    population_size: int = tk.IntVar()
+    elites_chance: float = tk.DoubleVar()
+#    mutation_chance: float = tk.DoubleVar() Currently redundant as mutation model doesn't allow for enough variation to let lower m_rates thrive
+    num_of_tests: int = tk.IntVar()
+
+#####################################################################################################################
+    header  = tk.Label(master = window, text = "Enter Neural Network Population Parameters", font = "Calibri 42 bold")
+
+    # Create Input Frame
+    input_frame = ttk.Frame(master = window)
+
+    #Create entry boxes and labels
+    label_gens, entry_gens = setup_input_field("Generations (int)", "calibri 20 bold", input_frame, generations)
     
-    bits_per_operand: int = 2
-    signed: bool = True
-
-    input_bit_size = 2 * bits_per_operand
-    output_bit_size = bits_per_operand + 1
-
-    generations = 10
-    population_size: int = 5
-    elites_chance: float = 0.2
-    mutation_chance: float = 0.1
+    label_pop, entry_pop = setup_input_field("Population Size (int)", "calibri 20 bold", input_frame, population_size)
     
-    h1_size: int = 128
-    h2_size: int = 64
-    h3_size: int = 32
-    h4_size: int = 16
+    label_bits, entry_bits = setup_input_field("Bits Per Operand (int):", "calibri 20 bold", input_frame, bits_per_operand)
 
-    layer_sizes: list = [input_bit_size, h2_size, h3_size, output_bit_size]
-    num_of_tests: int = 80
+    label_tests, entry_tests = setup_input_field("Test Size (int)", "calibri 20 bold", input_frame, num_of_tests)
 
-    test_data_a = generate_test_data(bits_per_operand, num_of_tests, signed)
+    label_elite_chance, entry_elite_chance = setup_input_field("Elite Percentage (float 0.0-1.0)", "calibri 20 bold", input_frame, elites_chance)
 
-    population_a = Population(bits_per_operand,
-                              signed,
-                              population_size,
-                              layer_sizes,
-                              elites_chance,
-                              )
+    label_signed, entry_signed = setup_input_field("Signed (bool)", "calibri 20 bold", input_frame, signed)
 
-    print("Start")
-    population_a.evolve(generations = generations, test_data = test_data_a, print_results = True)
+##########
+
+    def evolve_generations():
+
+        try:
+            assert int(bits_per_operand.get()) >= 1
+            assert int(num_of_tests.get()) >= 1
+            bool(signed.get())
+            assert int(population_size.get()) >= 1
+            assert float(elites_chance.get()) > 0
+            assert 0< elites_chance.get() <= 1.0
+        except (ValueError, AssertionError):
+            print("\n\nInvalid Input Fields")
+        else:
+
+            print("Start")
+            
+
+            input_bit_size = 2 * bits_per_operand.get()
+            output_bit_size = bits_per_operand.get() + 1
+
+            layer_sizes = [input_bit_size, 64, 32, output_bit_size]
+            test_data = generate_test_data(bits_per_operand.get(), num_of_tests.get(), signed.get())
+
+            population = Population(bits_per_operand.get(),
+                                    signed.get(),
+                                    population_size.get(),
+                                    layer_sizes,
+                                    elites_chance.get(),
+                                    )
+            
+            population.evolve(generations.get(), test_data, True)
+
+            print("End")
+
+            plt.xlabel("Generations")
+            plt.ylabel("Performance out of 100")
+            plt.show()
+
+###########
 
 
-    plt.xlabel("Generations")
-    plt.ylabel("Performance out of 100")
-    plt.show()
+    #Create Generate button
+    button_gen = ttk.Button(master = input_frame, text = "Generate", command = evolve_generations)
+
+    # Pack components
+    header.pack()
+
+    packer((label_gens, entry_gens), (label_pop, entry_pop),
+           (label_bits, entry_bits), (label_tests, entry_tests),
+           (label_elite_chance, entry_elite_chance), (label_signed, entry_signed))
+
+    button_gen.pack()
+
+    input_frame.pack(pady = 20)
+
+    window.mainloop()
+#####################################################################################################################
+
+def packer(*widgets):
+    for widget in widgets:
+        widget[0].pack()
+        widget[1].pack(padx = 20, pady = 20)
 
 
-   # print("Test")
-   # print(test_data_b[0][0], test_data_b[0][1], test_data_b[0][2])
-   # population_a.evolve(generations = 1, test_data = test_data_e, print_results = True)
+def setup_input_field(name, _font, _master, _text_variable):
+    label = ttk.Label(master = _master,
+                           text = name,
+                           font = _font)
+    entry = ttk.Entry(master = _master,
+                           textvariable = _text_variable)
+    
+    return label, entry
 
 def generate_test_data(bits_per_operand: int, num_of_tests: int, signed: bool):
     
