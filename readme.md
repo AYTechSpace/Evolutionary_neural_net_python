@@ -1,4 +1,4 @@
-v2.2.0
+v2.3.0
 
 Initially as part of CS50p I produced a program where a neural network is trained add two binary numbers. Starting from a single perceptron node, to generating a population of networks with a variable number of hidden layers.
 
